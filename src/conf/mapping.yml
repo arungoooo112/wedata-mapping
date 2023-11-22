@@ -1,0 +1,11 @@
+mapping:
+  - folder: 'excel_folder'
+    update: 'sheet'
+    with:
+      - set: 'field'
+        case:
+          - when: 'a'
+            then: 'b'
+        where:
+          - column: 'column'
+            equals: 'a'
