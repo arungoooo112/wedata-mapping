@@ -1,26 +1,80 @@
-// The module 'vscode' contains the VS Code extensibility API
-// Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
+import * as yaml from 'js-yaml';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as exceljs from 'exceljs';
 
-// This method is called when your extension is activated
-// Your extension is activated the very first time the command is executed
-export function activate(context: vscode.ExtensionContext) {
-
-	// Use the console to output diagnostic information (console.log) and errors (console.error)
-	// This line of code will only be executed once when your extension is activated
-	console.log('Congratulations, your extension "wedata-mapping" is now active!');
-
-	// The command has been defined in the package.json file
-	// Now provide the implementation of the command with registerCommand
-	// The commandId parameter must match the command field in package.json
-	let disposable = vscode.commands.registerCommand('wedata-mapping.helloWorld', () => {
-		// The code you place here will be executed every time your command is executed
-		// Display a message box to the user
-		vscode.window.showInformationMessage('Hello World from WeData Mapping!');
-	});
-
-	context.subscriptions.push(disposable);
+interface Mapping {
+  folder: string;
+  update: string;
+  with: {
+    set: string;
+    case: {
+      when: string;
+      then: string;
+    }[];
+    where: {
+      column: string;
+      equals: string;
+    };
+  }[];
 }
 
-// This method is called when your extension is deactivated
+export function activate(context: vscode.ExtensionContext) {
+  let disposable = vscode.commands.registerCommand('extension.executeMapping', async () => {
+    try {
+      // Prompt the user to select the mapping YAML file
+      const mappingFilePath = await vscode.window.showOpenDialog({
+        canSelectFiles: true,
+        canSelectFolders: false,
+        canSelectMany: false,
+        filters: {
+          YAML: ['yaml']
+        }
+      });
+
+      if (!mappingFilePath || mappingFilePath.length === 0) {
+        vscode.window.showErrorMessage('No mapping YAML file selected.');
+        return;
+      }
+
+      // Load the mapping YAML file
+      const yamlContent = fs.readFileSync(mappingFilePath[0].fsPath, 'utf8');
+      const mapping: Mapping[] = yaml.load(yamlContent) as Mapping[];
+
+      // Perform the mapping actions
+      mapping.forEach(async (mappingItem) => {
+        const excelFilePath = path.join(mappingItem.folder, 'your_excel_file.xlsx');
+
+        const workbook = new exceljs.Workbook();
+        await workbook.xlsx.readFile(excelFilePath);
+
+        const worksheet = workbook.getWorksheet(mappingItem.update);
+
+        if (worksheet) {
+			mappingItem.with.forEach((withItem) => {
+				worksheet.eachRow((row, rowNumber) => {
+				  const columnValue = row.getCell(withItem.where.column).value;
+				  if (columnValue === withItem.where.equals) {
+					withItem.case.forEach((caseItem) => {
+					  const updatedValue = withItem.set.replace(caseItem.when, caseItem.then);
+					  row.getCell(withItem.where.column).value = updatedValue;
+					});
+				  }
+				});
+			  });
+
+          await workbook.xlsx.writeFile(excelFilePath);
+        }
+      });
+
+      vscode.window.showInformationMessage('Mapping executed successfully.');
+    } catch (error) {
+      vscode.window.showErrorMessage(`Error executing mapping: ${error}`);
+    }
+  });
+
+  context.subscriptions.push(disposable);
+}
+
 export function deactivate() {}
